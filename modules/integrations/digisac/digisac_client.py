@@ -5,11 +5,8 @@ from observability.logger import get_logger
 
 _log = get_logger("digisac_client")
 
-# --- Digisac REST field reference (v1) ---
-# POST /messages  → send a message to a contact
-# Required headers: Authorization: Bearer <token>
-# Body fields verified against Digisac docs — adjust if their API version changes.
 _SEND_URL = f"{settings.digisac_base_url}/messages"
+_FILES_URL = f"{settings.digisac_base_url}/files"
 
 
 class DigisacClient:
@@ -19,6 +16,9 @@ class DigisacClient:
         self._headers = {
             "Authorization": f"Bearer {settings.digisac_token}",
             "Content-Type": "application/json",
+        }
+        self._media_headers = {
+            "Authorization": f"Bearer {settings.digisac_token}",
         }
 
     async def send_text(self, contact_id: str, text: str) -> dict:
@@ -35,6 +35,26 @@ class DigisacClient:
             resp.raise_for_status()
             _log.info("digisac_message_sent", contact_id=contact_id, status=resp.status_code)
             return resp.json()
+
+    async def download_media(self, file_id: str | None = None, media_url: str | None = None) -> bytes:
+        """Download a media file (audio or image) from Digisac.
+
+        Tries direct URL first; falls back to GET /files/{file_id}.
+        """
+        async with httpx.AsyncClient(timeout=30) as client:
+            if media_url:
+                resp = await client.get(media_url, headers=self._media_headers)
+                resp.raise_for_status()
+                _log.info("digisac_media_downloaded", source="url", size=len(resp.content))
+                return resp.content
+
+            if file_id:
+                resp = await client.get(f"{_FILES_URL}/{file_id}", headers=self._media_headers)
+                resp.raise_for_status()
+                _log.info("digisac_media_downloaded", source="file_id", size=len(resp.content))
+                return resp.content
+
+        raise ValueError("download_media requires file_id or media_url")
 
     async def send_text_mock(self, contact_id: str, text: str) -> dict:
         """Mock send — used when DIGISAC_TOKEN is not set."""

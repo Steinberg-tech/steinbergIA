@@ -5,14 +5,22 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from api.dependencies import get_conversation_service, get_orchestrator
 from modules.conversations.service import ConversationService
 from modules.ai.orchestrator import Orchestrator
+from modules.ai.media.audio_transcriber import AudioTranscriber
+from modules.ai.media.image_analyzer import ImageAnalyzer
 from modules.integrations.webhooks.webhook_handler import WebhookHandler
-from modules.integrations.digisac.digisac_client import DigisacClient, get_digisac_client
+from modules.integrations.digisac.digisac_client import get_digisac_client
 from config.settings import settings
 from observability.logger import get_logger
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 _log = get_logger("webhook_route")
 _handler = WebhookHandler()
+_audio_transcriber = AudioTranscriber()
+_image_analyzer = ImageAnalyzer()
+
+_AUDIO_TYPES = {"audio", "ptt", "voice"}
+_IMAGE_TYPES = {"image", "photo"}
+_DOCUMENT_TYPES = {"document"}
 
 
 @router.post("/digisac")
@@ -22,8 +30,8 @@ async def receive_digisac(
     conv_service: Annotated[ConversationService, Depends(get_conversation_service)],
 ):
     """
-    Dedicated Digisac webhook. Filters by allowed senders, runs the AI pipeline,
-    and sends the response back via the Digisac API.
+    Dedicated Digisac webhook. Handles text, audio, image, and document messages.
+    Audio is transcribed via Whisper; images/documents are analyzed via GPT-4o Vision.
     """
     payload = await request.json()
     _log.info("digisac_webhook_received", raw_payload=payload)
@@ -33,22 +41,51 @@ async def receive_digisac(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid payload: {exc}") from exc
 
-    session_id = parsed.get("session_id", "")
-    message = parsed.get("message", "")
-    contact_id = parsed.get("contact_id", "")
-    message_type = parsed.get("message_type", "text")
+    if not parsed:
+        return {"status": "ignored", "reason": "event filtered by handler"}
 
-    # Only process messages from allowed senders
-    if session_id not in settings.digisac_allowed_senders_list:
-        _log.info("digisac_sender_ignored", phone=session_id)
+    session_id = parsed.get("session_id", "")
+    contact_id = parsed.get("contact_id", "")
+    phone = parsed.get("phone", "")
+    message_type = parsed.get("message_type", "text")
+    message = parsed.get("message", "")
+    file_id = parsed.get("file_id")
+    media_url = parsed.get("media_url")
+    mime_type = parsed.get("mime_type", "")
+
+    # Allowlist accepts both phone numbers (e.g. 5585997085202) and contactId UUIDs
+    allowed = settings.digisac_allowed_senders_list
+    if allowed and session_id not in allowed and phone not in allowed:
+        _log.info("digisac_sender_ignored", session_id=session_id, phone=phone)
         return {"status": "ignored", "reason": "sender not in allowlist"}
 
-    if not message:
-        if message_type != "text":
-            _log.info("digisac_non_text_ignored", type=message_type, phone=session_id)
-        return {"status": "ignored", "reason": "empty or non-text message"}
+    # Resolve media to text when needed
+    if message_type in _AUDIO_TYPES and (file_id or media_url):
+        digisac = get_digisac_client()
+        try:
+            audio_bytes = await digisac.download_media(file_id=file_id, media_url=media_url)
+            message = await _audio_transcriber.transcribe(audio_bytes, mime_type=mime_type)
+            _log.info("digisac_audio_transcribed", session_id=session_id, chars=len(message))
+        except Exception as exc:
+            _log.error("digisac_audio_error", session_id=session_id, error=str(exc))
+            message = "[Áudio recebido — não foi possível transcrever no momento]"
 
-    _log.info("digisac_processing", phone=session_id, message_len=len(message))
+    elif message_type in _IMAGE_TYPES | _DOCUMENT_TYPES and (file_id or media_url):
+        digisac = get_digisac_client()
+        try:
+            image_bytes = await digisac.download_media(file_id=file_id, media_url=media_url)
+            description = await _image_analyzer.analyze(image_bytes, mime_type=mime_type)
+            message = f"[Imagem enviada pelo cliente]\n{description}"
+            _log.info("digisac_image_analyzed", session_id=session_id, chars=len(message))
+        except Exception as exc:
+            _log.error("digisac_image_error", session_id=session_id, error=str(exc))
+            message = "[Imagem recebida — não foi possível analisar no momento]"
+
+    if not message:
+        _log.info("digisac_empty_message_ignored", message_type=message_type, session_id=session_id)
+        return {"status": "ignored", "reason": "empty message"}
+
+    _log.info("digisac_processing", session_id=session_id, message_type=message_type, message_len=len(message))
 
     conversation = await conv_service.get_or_create(session_id, "digisac")
     await conv_service.save_user_message(conversation.id, message)
@@ -56,12 +93,11 @@ async def receive_digisac(
     try:
         final_text, agent_response = await orchestrator.process(message, session_id)
     except Exception as exc:
-        _log.error("digisac_pipeline_error", phone=session_id, error=str(exc))
+        _log.error("digisac_pipeline_error", session_id=session_id, error=str(exc))
         return {"status": "error", "reason": "pipeline failure"}
 
     await conv_service.save_assistant_message(conversation.id, final_text)
 
-    # Send response back through Digisac
     digisac = get_digisac_client()
     try:
         if settings.digisac_token:
@@ -71,7 +107,7 @@ async def receive_digisac(
     except Exception as exc:
         _log.error("digisac_send_error", contact_id=contact_id, error=str(exc))
 
-    return {"status": "processed", "session_id": session_id}
+    return {"status": "processed", "session_id": session_id, "message_type": message_type}
 
 
 @router.post("/{platform}")

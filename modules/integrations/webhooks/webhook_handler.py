@@ -26,6 +26,7 @@ class WebhookHandler:
     def _parse_digisac(self, payload: dict) -> dict:
         # Digisac webhook payload uses "event" (not "type") at root level.
         # Text messages have data.type == "chat" and text in data.text.
+        # Audio/image messages carry file info in data.file or data.mediaUrl.
         # Phone number is not included — contactId UUID is used as session identifier.
         data = payload.get("data", payload)
         event_type = payload.get("event", payload.get("type", ""))
@@ -38,15 +39,44 @@ class WebhookHandler:
             return {}
 
         contact_id = data.get("contactId") or data.get("fromId", "")
+        # Phone number comes in data.contact.number or data.number
+        contact = data.get("contact") or {}
+        phone = contact.get("number") or data.get("number") or data.get("phone", "")
         message_type = data.get("type", "chat")
-        text = data.get("text", "") if message_type in ("text", "chat") else ""
+
+        text = ""
+        file_id = None
+        media_url = None
+        mime_type = None
+
+        if message_type in ("text", "chat"):
+            text = data.get("text", "")
+        elif message_type in ("audio", "ptt", "voice"):
+            file_info = data.get("file") or {}
+            file_id = file_info.get("id") or data.get("fileId")
+            media_url = file_info.get("url") or data.get("mediaUrl")
+            mime_type = file_info.get("mimeType", "audio/ogg")
+        elif message_type in ("image", "photo"):
+            file_info = data.get("file") or {}
+            file_id = file_info.get("id") or data.get("fileId")
+            media_url = file_info.get("url") or data.get("mediaUrl")
+            mime_type = file_info.get("mimeType", "image/jpeg")
+        elif message_type == "document":
+            file_info = data.get("file") or {}
+            file_id = file_info.get("id") or data.get("fileId")
+            media_url = file_info.get("url") or data.get("mediaUrl")
+            mime_type = file_info.get("mimeType", "application/pdf")
 
         return {
             "session_id": contact_id,
             "contact_id": contact_id,
+            "phone": phone,
             "service_id": data.get("serviceId", ""),
             "message": text,
             "message_type": message_type,
+            "file_id": file_id,
+            "media_url": media_url,
+            "mime_type": mime_type,
             "platform": "digisac",
             "raw": payload,
         }
