@@ -1,8 +1,16 @@
 import datetime
+from pathlib import Path
+
 
 def _is_business_hours() -> bool:
     now = datetime.datetime.now()
     return now.weekday() < 5 and 9 <= now.hour < 17
+
+
+def _load_comportamento() -> str:
+    path = Path(__file__).parent / "comportamento.md"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
 
 BASE_SYSTEM_PROMPT = """Você é Helena, assistente de atendimento do Escritório Steinberg Advogados Associados, especializado em Direito Bancário.
 
@@ -79,6 +87,8 @@ Quando o cliente enviar documentos (foto, PDF, imagem), responda:
 ## REGRA GERAL
 Em caso de dúvida sobre o que responder, prefira sempre transferir para um humano a arriscar uma informação errada.
 """
+
+BASE_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + "\n\n" + _load_comportamento()
 
 ESCALATION_MESSAGE = (
     "Entendemos a sua situação, senhor(a). Para resolver da melhor forma, "
