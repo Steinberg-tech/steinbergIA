@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 
 from config.settings import settings
@@ -36,12 +37,34 @@ class DigisacClient:
             _log.info("digisac_message_sent", contact_id=contact_id, status=resp.status_code)
             return resp.json()
 
+    async def get_message(self, message_id: str, retries: int = 5, delay: float = 2.0) -> dict:
+        """Fetch a message by ID, retrying until the file is ready (isDownloading=False)."""
+        url = f"{settings.digisac_base_url}/messages/{message_id}"
+        data: dict = {}
+        async with httpx.AsyncClient(timeout=15) as client:
+            for attempt in range(retries):
+                resp = await client.get(url, headers=self._media_headers)
+                resp.raise_for_status()
+                data = resp.json()
+                inner = data.get("data", {}) or {}
+                file_download = inner.get("fileDownload", {}) or {}
+                if not file_download.get("isDownloading", False):
+                    _log.info("digisac_message_fetched", message_id=message_id, attempt=attempt)
+                    if settings.debug:
+                        import json as _json
+                        print(f"\n[DEBUG] full message response:\n{_json.dumps(data, indent=2, ensure_ascii=False)}\n")
+                    return data
+                _log.info("digisac_file_still_downloading", message_id=message_id, attempt=attempt)
+                await asyncio.sleep(delay)
+        _log.warning("digisac_file_download_timeout", message_id=message_id)
+        return data
+
     async def download_media(self, file_id: str | None = None, media_url: str | None = None) -> bytes:
         """Download a media file (audio or image) from Digisac.
 
-        Tries direct URL first; falls back to GET /files/{file_id}.
+        Tries multiple URL patterns since Digisac doesn't return the file URL in the message payload.
         """
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             if media_url:
                 resp = await client.get(media_url, headers=self._media_headers)
                 resp.raise_for_status()
@@ -49,10 +72,23 @@ class DigisacClient:
                 return resp.content
 
             if file_id:
-                resp = await client.get(f"{_FILES_URL}/{file_id}", headers=self._media_headers)
-                resp.raise_for_status()
-                _log.info("digisac_media_downloaded", source="file_id", size=len(resp.content))
-                return resp.content
+                candidates = [
+                    f"{settings.digisac_base_url}/messages/{file_id}/file",
+                    f"{settings.digisac_base_url}/messages/{file_id}/download",
+                    f"{settings.digisac_base_url}/files/{file_id}/download",
+                    f"{settings.digisac_base_url}/files/{file_id}",
+                ]
+                for url in candidates:
+                    try:
+                        resp = await client.get(url, headers=self._media_headers)
+                        if resp.status_code == 200 and len(resp.content) > 0:
+                            _log.info("digisac_media_downloaded", source=url, size=len(resp.content))
+                            return resp.content
+                        _log.info("digisac_media_candidate_failed", url=url, status=resp.status_code)
+                    except Exception as exc:
+                        _log.info("digisac_media_candidate_error", url=url, error=str(exc))
+
+                raise ValueError(f"Could not download media for file_id={file_id} — all endpoints returned non-200")
 
         raise ValueError("download_media requires file_id or media_url")
 
