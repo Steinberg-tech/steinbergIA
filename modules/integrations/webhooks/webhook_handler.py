@@ -38,6 +38,7 @@ class WebhookHandler:
         if data.get("isFromMe", False) or data.get("isFromBot", False):
             return {}
 
+        message_id = data.get("id", "")
         contact_id = data.get("contactId") or data.get("fromId", "")
         # Phone number comes in data.contact.number or data.number
         contact = data.get("contact") or {}
@@ -70,6 +71,7 @@ class WebhookHandler:
         return {
             "session_id": contact_id,
             "contact_id": contact_id,
+            "message_id": message_id,
             "phone": phone,
             "service_id": data.get("serviceId", ""),
             "message": text,

@@ -36,6 +36,13 @@ async def receive_digisac(
     payload = await request.json()
     _log.info("digisac_webhook_received", raw_payload=payload)
 
+    # DEBUG — imprime o payload bruto no terminal para facilitar diagnóstico
+    if settings.debug:
+        import json as _json
+        print("\n===== DIGISAC RAW PAYLOAD =====")
+        print(_json.dumps(payload, indent=2, ensure_ascii=False))
+        print("================================\n")
+
     try:
         parsed = _handler.parse("digisac", payload)
     except Exception as exc:
@@ -44,8 +51,13 @@ async def receive_digisac(
     if not parsed:
         return {"status": "ignored", "reason": "event filtered by handler"}
 
+    # DEBUG — imprime o resultado do parse
+    if settings.debug:
+        print(f"[DEBUG] parsed: event_type={payload.get('event', payload.get('type', '?'))} | message_type={parsed.get('message_type')} | session_id={parsed.get('session_id')} | phone={parsed.get('phone')} | file_id={parsed.get('file_id')} | media_url={parsed.get('media_url')}")
+
     session_id = parsed.get("session_id", "")
     contact_id = parsed.get("contact_id", "")
+    message_id = parsed.get("message_id", "")
     phone = parsed.get("phone", "")
     message_type = parsed.get("message_type", "text")
     message = parsed.get("message", "")
@@ -60,9 +72,18 @@ async def receive_digisac(
         return {"status": "ignored", "reason": "sender not in allowlist"}
 
     # Resolve media to text when needed
-    if message_type in _AUDIO_TYPES and (file_id or media_url):
+    if message_type in _AUDIO_TYPES:
         digisac = get_digisac_client()
         try:
+            # File URL may not be in the webhook payload (isDownloading=true).
+            # Wait until Digisac finishes downloading, then fetch binary via GET /files/{messageId}.
+            if not file_id and not media_url and message_id:
+                await digisac.get_message(message_id)  # waits until isDownloading=False
+                file_id = message_id
+                mime_type = "audio/ogg"
+                if settings.debug:
+                    print(f"[DEBUG] using message_id as file_id: {file_id}")
+
             audio_bytes = await digisac.download_media(file_id=file_id, media_url=media_url)
             message = await _audio_transcriber.transcribe(audio_bytes, mime_type=mime_type)
             _log.info("digisac_audio_transcribed", session_id=session_id, chars=len(message))
