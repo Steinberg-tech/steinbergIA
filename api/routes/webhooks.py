@@ -65,10 +65,9 @@ async def receive_digisac(
     media_url = parsed.get("media_url")
     mime_type = parsed.get("mime_type", "")
 
-    # Allowlist accepts both phone numbers (e.g. 5585997085202) and contactId UUIDs
     allowed = settings.digisac_allowed_senders_list
-    if allowed and session_id not in allowed and phone not in allowed:
-        _log.info("digisac_sender_ignored", session_id=session_id, phone=phone)
+    if allowed and phone not in allowed:
+        _log.info("digisac_sender_ignored", phone=phone)
         return {"status": "ignored", "reason": "sender not in allowlist"}
 
     # Resolve media to text when needed
