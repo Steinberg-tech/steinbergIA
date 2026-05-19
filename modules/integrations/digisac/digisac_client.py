@@ -37,6 +37,22 @@ class DigisacClient:
             _log.info("digisac_message_sent", contact_id=contact_id, status=resp.status_code)
             return resp.json()
 
+    async def get_contact_phone(self, contact_id: str) -> str:
+        """Fetch contact phone number by contactId. Returns empty string if not found."""
+        url = f"{settings.digisac_base_url}/contacts/{contact_id}"
+        async with httpx.AsyncClient(timeout=10) as client:
+            try:
+                resp = await client.get(url, headers=self._media_headers)
+                resp.raise_for_status()
+                full = resp.json()
+                data = full.get("data", {}) or {}
+                phone = data.get("number") or data.get("phone", "")
+                _log.info("digisac_contact_fetched", contact_id=contact_id, phone=phone, raw=full)
+                return phone
+            except Exception as exc:
+                _log.warning("digisac_contact_fetch_failed", contact_id=contact_id, error=str(exc))
+                return ""
+
     async def get_message(self, message_id: str, retries: int = 5, delay: float = 2.0) -> dict:
         """Fetch a message by ID, retrying until the file is ready (isDownloading=False)."""
         url = f"{settings.digisac_base_url}/messages/{message_id}"

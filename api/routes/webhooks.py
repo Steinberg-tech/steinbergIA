@@ -66,9 +66,12 @@ async def receive_digisac(
     mime_type = parsed.get("mime_type", "")
 
     allowed = settings.digisac_allowed_senders_list
-    if allowed and phone not in allowed:
-        _log.info("digisac_sender_ignored", phone=phone)
-        return {"status": "ignored", "reason": "sender not in allowlist"}
+    if allowed:
+        if not phone and contact_id:
+            phone = await get_digisac_client().get_contact_phone(contact_id)
+        if phone not in allowed:
+            _log.info("digisac_sender_ignored", phone=phone)
+            return {"status": "ignored", "reason": "sender not in allowlist"}
 
     # Resolve media to text when needed
     if message_type in _AUDIO_TYPES:
