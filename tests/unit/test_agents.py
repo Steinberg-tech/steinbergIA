@@ -76,3 +76,33 @@ def test_build_user_context_block_partial_user():
     result = build_user_context_block(context)
     assert "João" in result
     assert "last_order_id" not in result
+
+
+@pytest.mark.asyncio
+async def test_faq_agent_injects_user_name_in_prompt(mock_llm, mock_registry):
+    context = {
+        "session_id": "s1",
+        "history": [],
+        "session": {},
+        "user": {"name": "Maria Silva"},
+    }
+    agent = FAQAgent(mock_llm, mock_registry)
+    await agent.handle("Qual a política de devolução?", context)
+
+    call_kwargs = mock_llm.generate_response.call_args_list[0].kwargs
+    assert "Maria Silva" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_support_agent_injects_user_name_in_prompt(mock_llm, mock_registry):
+    context = {
+        "session_id": "s2",
+        "history": [],
+        "session": {},
+        "user": {"name": "João Pereira"},
+    }
+    agent = SupportAgent(mock_llm, mock_registry)
+    await agent.handle("Quero abrir um chamado.", context)
+
+    call_kwargs = mock_llm.generate_response.call_args_list[0].kwargs
+    assert "João Pereira" in call_kwargs["system_prompt"]
