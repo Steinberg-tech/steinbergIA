@@ -1,6 +1,6 @@
 from modules.ai.agents.base_agent import AgentResponse, BaseAgent
 from modules.ai.llm.client import LLMClient
-from modules.ai.prompts.agent_prompts import SUPPORT_AGENT_PROMPT
+from modules.ai.prompts.agent_prompts import SUPPORT_AGENT_PROMPT, build_user_context_block
 from modules.ai.prompts.templates import TICKET_CREATED_TEMPLATE, render
 from modules.ai.tools.registry import ToolRegistry
 from observability.audit import log_event
@@ -26,6 +26,7 @@ class SupportAgent(BaseAgent):
 
     async def handle(self, user_message: str, context: dict) -> AgentResponse:
         session_id = context.get("session_id", "unknown")
+        system_prompt = SUPPORT_AGENT_PROMPT + build_user_context_block(context)
 
         async with trace("support_agent.handle", session_id=session_id):
             support_tools = [
@@ -34,7 +35,7 @@ class SupportAgent(BaseAgent):
             ]
 
             llm_response = await self._llm.generate_response(
-                system_prompt=SUPPORT_AGENT_PROMPT,
+                system_prompt=system_prompt,
                 user_message=user_message,
                 history=context.get("history", []),
                 tools=support_tools,

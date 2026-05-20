@@ -188,7 +188,7 @@ def get_orchestrator(
     ])
     agents = [
         FAQAgent(llm, registry),
-        OrderAgent(llm, registry),
+        OrderAgent(llm, registry, UserMemory(cache)),
         SupportAgent(llm, registry),
         WorkflowAgent(llm, session_mem),
     ]

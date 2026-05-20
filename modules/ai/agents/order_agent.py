@@ -1,6 +1,7 @@
+from memory.user_memory import UserMemory
 from modules.ai.agents.base_agent import AgentResponse, BaseAgent
 from modules.ai.llm.client import LLMClient
-from modules.ai.prompts.agent_prompts import ORDER_AGENT_PROMPT
+from modules.ai.prompts.agent_prompts import ORDER_AGENT_PROMPT, build_user_context_block
 from modules.ai.prompts.templates import ORDER_STATUS_TEMPLATE, render
 from modules.ai.tools.registry import ToolRegistry
 from observability.logger import get_logger
@@ -11,9 +12,10 @@ _log = get_logger("order_agent")
 
 
 class OrderAgent(BaseAgent):
-    def __init__(self, llm: LLMClient, tools: ToolRegistry) -> None:
+    def __init__(self, llm: LLMClient, tools: ToolRegistry, user_memory: UserMemory) -> None:
         self._llm = llm
         self._tools = tools
+        self._user_memory = user_memory
 
     @property
     def name(self) -> str:
@@ -24,6 +26,9 @@ class OrderAgent(BaseAgent):
         return "Consulta status de pedidos e informações de entrega via ERP."
 
     async def handle(self, user_message: str, context: dict) -> AgentResponse:
+        session_id = context.get("session_id", "unknown")
+        system_prompt = ORDER_AGENT_PROMPT + build_user_context_block(context)
+
         async with trace("order_agent.handle"):
             order_tools = [
                 t for t in self._tools.get_tool_schemas()
@@ -31,7 +36,7 @@ class OrderAgent(BaseAgent):
             ]
 
             llm_response = await self._llm.generate_response(
-                system_prompt=ORDER_AGENT_PROMPT,
+                system_prompt=system_prompt,
                 user_message=user_message,
                 history=context.get("history", []),
                 tools=order_tools,
@@ -44,9 +49,13 @@ class OrderAgent(BaseAgent):
                     tool_results.append(result)
 
                 order_info = tool_results[0] if tool_results else {}
+                order_id = order_info.get("order_id")
+                if order_id:
+                    await self._user_memory.remember_last_order(session_id, order_id)
+
                 enriched = user_message + "\n\n[Dados do pedido:]\n" + _format_order(order_info)
                 final = await self._llm.generate_response(
-                    system_prompt=ORDER_AGENT_PROMPT,
+                    system_prompt=system_prompt,
                     user_message=enriched,
                     history=context.get("history", []),
                 )

@@ -1,6 +1,6 @@
 from modules.ai.agents.base_agent import AgentResponse, BaseAgent
 from modules.ai.llm.client import LLMClient
-from modules.ai.prompts.agent_prompts import WORKFLOW_AGENT_PROMPT
+from modules.ai.prompts.agent_prompts import WORKFLOW_AGENT_PROMPT, build_user_context_block
 from memory.session import SessionMemory
 from observability.logger import get_logger
 from observability.tracer import trace
@@ -42,10 +42,14 @@ class WorkflowAgent(BaseAgent):
             active_workflow = session_data.get("active_workflow")
 
             workflow_context = _build_workflow_context(active_workflow, session_data)
-            enriched_prompt = WORKFLOW_AGENT_PROMPT + workflow_context
+            system_prompt = (
+                WORKFLOW_AGENT_PROMPT
+                + build_user_context_block(context)
+                + workflow_context
+            )
 
             llm_response = await self._llm.generate_response(
-                system_prompt=enriched_prompt,
+                system_prompt=system_prompt,
                 user_message=user_message,
                 history=context.get("history", []),
             )
