@@ -51,3 +51,16 @@ async def test_get_history_returns_empty_when_no_conversation(service, mock_repo
 async def test_escalate_calls_repo(service, mock_repo):
     await service.escalate("conv-001")
     mock_repo.update_status.assert_called_once_with("conv-001", ConversationStatus.ESCALATED)
+
+
+@pytest.fixture
+def mock_cache_backend():
+    return AsyncMock()
+
+
+@pytest.mark.asyncio
+async def test_user_memory_clear_deletes_key(mock_cache_backend):
+    from memory.user_memory import UserMemory
+    mem = UserMemory(mock_cache_backend)
+    await mem.clear("session-abc")
+    mock_cache_backend.delete.assert_called_once_with("user_memory:session-abc")
