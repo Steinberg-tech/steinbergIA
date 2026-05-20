@@ -2,7 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 
-from api.dependencies import get_conversation_service, get_orchestrator
+from api.dependencies import get_conversation_service, get_orchestrator, get_session_memory, get_user_memory
+from memory.session import SessionMemory
+from memory.user_memory import UserMemory
 from modules.conversations.service import ConversationService
 from modules.ai.orchestrator import Orchestrator
 from modules.ai.media.audio_transcriber import AudioTranscriber
@@ -28,6 +30,8 @@ async def receive_digisac(
     request: Request,
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
     conv_service: Annotated[ConversationService, Depends(get_conversation_service)],
+    session_memory: Annotated[SessionMemory, Depends(get_session_memory)],
+    user_memory: Annotated[UserMemory, Depends(get_user_memory)],
 ):
     """
     Dedicated Digisac webhook. Handles text, audio, image, and document messages.
@@ -107,6 +111,23 @@ async def receive_digisac(
     if not message:
         _log.info("digisac_empty_message_ignored", message_type=message_type, session_id=session_id)
         return {"status": "ignored", "reason": "empty message"}
+
+    if message.strip().lower() == "/reset":
+        _log.info("session_reset", session_id=session_id)
+        await session_memory.clear(session_id)
+        await user_memory.clear(session_id)
+        conv = await conv_service.get_or_create(session_id, "digisac")
+        await conv_service.resolve(conv.id)
+        reset_text = "Memória resetada com sucesso. Pode começar uma nova conversa!"
+        digisac = get_digisac_client()
+        try:
+            if settings.digisac_token:
+                await digisac.send_text(contact_id=contact_id, text=reset_text)
+            else:
+                await digisac.send_text_mock(contact_id=contact_id, text=reset_text)
+        except Exception as exc:
+            _log.error("digisac_send_error", contact_id=contact_id, error=str(exc))
+        return {"status": "reset", "session_id": session_id}
 
     _log.info("digisac_processing", session_id=session_id, message_type=message_type, message_len=len(message))
 
