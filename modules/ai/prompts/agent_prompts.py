@@ -29,3 +29,23 @@ Sua especialidade: conduzir processos multi-etapa como troca, cancelamento ou re
 - Confirme sempre com o cliente antes de avançar para a próxima etapa
 - Registre cada decisão e colete aprovações quando necessário
 """
+
+
+def build_user_context_block(context: dict) -> str:
+    """Monta bloco de contexto do usuário para injetar no system prompt."""
+    user = context.get("user", {})
+    if not user:
+        return ""
+
+    lines = ["\n\n## CONTEXTO DO CLIENTE"]
+    if name := user.get("name"):
+        lines.append(f"- Nome: {name} (chame-o assim ao longo da conversa)")
+    if last_order := user.get("last_order_id"):
+        lines.append(f"- Último pedido consultado: {last_order}")
+
+    extra_keys = {k for k in user if k not in ("name", "last_order_id")}
+    for key in sorted(extra_keys):
+        if user[key]:
+            lines.append(f"- {key}: {user[key]}")
+
+    return "\n".join(lines) if len(lines) > 1 else ""

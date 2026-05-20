@@ -7,6 +7,7 @@ from modules.ai.agents.support_agent import SupportAgent
 from modules.ai.agents.base_agent import AgentResponse
 from modules.ai.llm.schemas import LLMResponse
 from modules.ai.tools.registry import ToolRegistry
+from modules.ai.prompts.agent_prompts import build_user_context_block
 from shared.constants import AgentName
 
 
@@ -46,3 +47,32 @@ async def test_support_agent_without_tool_call(mock_llm, mock_registry, mock_con
     response = await agent.handle("Meu produto chegou quebrado!", mock_context)
     assert isinstance(response, AgentResponse)
     assert not response.escalate
+
+
+def test_build_user_context_block_with_full_user():
+    context = {
+        "user": {"name": "Maria Silva", "last_order_id": "PED-999"},
+        "session": {},
+    }
+    result = build_user_context_block(context)
+    assert "Maria Silva" in result
+    assert "PED-999" in result
+
+
+def test_build_user_context_block_with_empty_user():
+    context = {"user": {}, "session": {}}
+    result = build_user_context_block(context)
+    assert result == ""
+
+
+def test_build_user_context_block_with_missing_user():
+    context = {"session": {}}
+    result = build_user_context_block(context)
+    assert result == ""
+
+
+def test_build_user_context_block_partial_user():
+    context = {"user": {"name": "João"}, "session": {}}
+    result = build_user_context_block(context)
+    assert "João" in result
+    assert "last_order_id" not in result
