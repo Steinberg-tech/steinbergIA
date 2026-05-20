@@ -182,3 +182,26 @@ async def test_order_agent_saves_last_order_after_tool_call(mock_llm, mock_regis
     await agent.handle("Pedido PED-999", context)
 
     user_mem.remember_last_order.assert_called_once_with("s-order", "PED-999")
+
+
+@pytest.mark.asyncio
+async def test_order_agent_does_not_save_when_order_id_absent(mock_llm, mock_registry):
+    user_mem = AsyncMock(spec=UserMemory)
+
+    mock_llm.generate_response.side_effect = [
+        LLMResponse(
+            content="",
+            model="gpt-4o-mock",
+            tool_calls=[{"name": "get_order_status", "arguments": {"order_id": "X"}}],
+        ),
+        LLMResponse(content="Não encontrei o pedido.", model="gpt-4o-mock"),
+    ]
+    mock_registry_err = AsyncMock(spec=ToolRegistry)
+    mock_registry_err.get_tool_schemas.return_value = [{"function": {"name": "get_order_status"}}]
+    mock_registry_err.execute.return_value = {"error": "not_found"}
+
+    context = {"session_id": "s-err", "history": [], "session": {}, "user": {}}
+    agent = OrderAgent(mock_llm, mock_registry_err, user_mem)
+    await agent.handle("Pedido X", context)
+
+    user_mem.remember_last_order.assert_not_called()
