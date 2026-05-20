@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 
+from memory.user_memory import UserMemory
 from modules.ai.agents.faq_agent import FAQAgent
 from modules.ai.agents.order_agent import OrderAgent
 from modules.ai.agents.support_agent import SupportAgent
@@ -22,7 +23,8 @@ async def test_faq_agent_returns_response(mock_llm, mock_registry, mock_context)
 
 @pytest.mark.asyncio
 async def test_order_agent_returns_response(mock_llm, mock_registry, mock_context):
-    agent = OrderAgent(mock_llm, mock_registry)
+    user_mem = AsyncMock(spec=UserMemory)
+    agent = OrderAgent(mock_llm, mock_registry, user_mem)
     assert agent.name == AgentName.ORDER
     response = await agent.handle("Qual o status do pedido 123?", mock_context)
     assert isinstance(response, AgentResponse)
@@ -127,3 +129,56 @@ async def test_workflow_agent_injects_user_name_in_prompt(mock_llm):
 
     call_kwargs = mock_llm.generate_response.call_args_list[0].kwargs
     assert "Carlos Lima" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_order_agent_injects_user_name_in_prompt(mock_llm, mock_registry):
+    user_mem = AsyncMock(spec=UserMemory)
+    context = {
+        "session_id": "s3",
+        "history": [],
+        "session": {},
+        "user": {"name": "Ana Souza", "last_order_id": "PED-100"},
+    }
+    agent = OrderAgent(mock_llm, mock_registry, user_mem)
+    await agent.handle("Qual o status do meu pedido?", context)
+
+    call_kwargs = mock_llm.generate_response.call_args_list[0].kwargs
+    assert "Ana Souza" in call_kwargs["system_prompt"]
+    assert "PED-100" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_order_agent_saves_last_order_after_tool_call(mock_llm, mock_registry):
+    user_mem = AsyncMock(spec=UserMemory)
+
+    mock_llm.generate_response.side_effect = [
+        LLMResponse(
+            content="",
+            model="gpt-4o-mock",
+            tool_calls=[{"name": "get_order_status", "arguments": {"order_id": "PED-999"}}],
+        ),
+        LLMResponse(content="Seu pedido está a caminho.", model="gpt-4o-mock"),
+    ]
+    mock_registry_with_order = AsyncMock(spec=ToolRegistry)
+    mock_registry_with_order.get_tool_schemas.return_value = [{
+        "function": {"name": "get_order_status"}
+    }]
+    mock_registry_with_order.execute.return_value = {
+        "order_id": "PED-999",
+        "status": "em_transito",
+        "estimated_delivery": "2026-05-25",
+        "carrier": "Correios",
+        "tracking_code": "BR123",
+    }
+
+    context = {
+        "session_id": "s-order",
+        "history": [],
+        "session": {},
+        "user": {},
+    }
+    agent = OrderAgent(mock_llm, mock_registry_with_order, user_mem)
+    await agent.handle("Pedido PED-999", context)
+
+    user_mem.remember_last_order.assert_called_once_with("s-order", "PED-999")
