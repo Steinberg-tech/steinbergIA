@@ -34,3 +34,6 @@ class UserMemory:
 
     async def remember_last_order(self, session_id: str, order_id: str) -> None:
         await self.update(session_id, last_order_id=order_id)
+
+    async def clear(self, session_id: str) -> None:
+        await self._cache.delete(self._key(session_id))

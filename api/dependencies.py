@@ -142,6 +142,10 @@ def get_session_memory(cache: Annotated[CacheBackend, Depends(get_cache)]) -> Se
     return SessionMemory(cache, ttl=settings.session_ttl_seconds)
 
 
+def get_user_memory(cache: Annotated[CacheBackend, Depends(get_cache)]) -> UserMemory:
+    return UserMemory(cache)
+
+
 def get_context_builder(
     db: Annotated[AsyncSession, Depends(get_db)],
     cache: Annotated[CacheBackend, Depends(get_cache)],
