@@ -106,3 +106,24 @@ async def test_support_agent_injects_user_name_in_prompt(mock_llm, mock_registry
 
     call_kwargs = mock_llm.generate_response.call_args_list[0].kwargs
     assert "João Pereira" in call_kwargs["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_agent_injects_user_name_in_prompt(mock_llm):
+    from memory.session import SessionMemory
+    from modules.ai.agents.workflow_agent import WorkflowAgent
+
+    session_mem = AsyncMock(spec=SessionMemory)
+    session_mem.get.return_value = {}
+
+    context = {
+        "session_id": "s4",
+        "history": [],
+        "session": {},
+        "user": {"name": "Carlos Lima"},
+    }
+    agent = WorkflowAgent(mock_llm, session_mem)
+    await agent.handle("Quero fazer uma troca.", context)
+
+    call_kwargs = mock_llm.generate_response.call_args_list[0].kwargs
+    assert "Carlos Lima" in call_kwargs["system_prompt"]
