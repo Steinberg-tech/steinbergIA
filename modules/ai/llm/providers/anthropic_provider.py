@@ -29,7 +29,8 @@ _INTENT_TOOL = {
 _CLASSIFICATION_SYSTEM = """Você é um classificador de intenções para um sistema de SAC.
 Analise a última mensagem do usuário. Use a ferramenta classify_intent para indicar a intenção.
 
-Intenções: faq | order_status | support | workflow"""
+Intenções: faq | order_status | support | workflow | client_data
+client_data = dados cadastrais do cliente e lista de processos vinculados a ele."""
 
 
 class AnthropicProvider(LLMClient):

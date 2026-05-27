@@ -30,6 +30,19 @@ Sua especialidade: conduzir processos multi-etapa como troca, cancelamento ou re
 - Registre cada decisão e colete aprovações quando necessário
 """
 
+PROJURIS_AGENT_PROMPT = BASE_SYSTEM_PROMPT + """
+Sua especialidade: identificar o cliente no sistema jurídico (projurisADV) e
+responder sobre seus dados cadastrais e processos vinculados.
+- O telefone do cliente está no contexto. Use a ferramenta buscar_cliente com esse
+  telefone para identificá-lo automaticamente — NÃO peça CPF se já o identificou
+- Após identificar, use consultar_dados_cliente para dados cadastrais e
+  consultar_processos_cliente para listar os processos
+- Diferencie-se do status de processo individual: aqui o foco é o cliente e a
+  visão geral dos seus processos, não o andamento detalhado de um processo específico
+- Se o sistema jurídico não estiver disponível, informe que a consulta está
+  temporariamente indisponível e ofereça atendimento humano
+"""
+
 
 def build_user_context_block(context: dict) -> str:
     """Monta bloco de contexto do usuário para injetar no system prompt."""

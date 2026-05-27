@@ -12,6 +12,7 @@ from memory.session import SessionMemory
 from memory.user_memory import UserMemory
 from modules.ai.agents.faq_agent import FAQAgent
 from modules.ai.agents.order_agent import OrderAgent
+from modules.ai.agents.projuris_agent import ProjurisAgent
 from modules.ai.agents.support_agent import SupportAgent
 from modules.ai.agents.workflow_agent import WorkflowAgent
 from modules.ai.guardrails.content_filter import ContentFilter
@@ -20,12 +21,16 @@ from modules.ai.guardrails.output_guard import OutputGuard
 from modules.ai.orchestrator import Orchestrator
 from modules.ai.router import IntentRouter
 from modules.ai.tools.order_tool import OrderTool
+from modules.ai.tools.projuris_person_cases_tool import ProjurisPersonCasesTool
+from modules.ai.tools.projuris_person_data_tool import ProjurisPersonDataTool
+from modules.ai.tools.projuris_search_person_tool import ProjurisSearchPersonTool
 from modules.ai.tools.registry import ToolRegistry
 from modules.ai.tools.search_tool import SearchTool
 from modules.ai.tools.ticket_tool import TicketTool
 from modules.conversations.repository import ConversationRepository
 from modules.conversations.service import ConversationService
 from modules.integrations.erp.erp_client import ERPClient
+from modules.integrations.projuris.projuris_client import ProjurisClient
 from modules.knowledge.embeddings import EmbeddingGenerator
 from modules.knowledge.repository import KnowledgeRepository
 from modules.knowledge.service import KnowledgeService
@@ -109,6 +114,11 @@ def get_erp_client() -> ERPClient:
 
 
 @lru_cache
+def get_projuris_client() -> ProjurisClient:
+    return ProjurisClient()
+
+
+@lru_cache
 def get_vector_store() -> VectorStore:
     return VectorStore()
 
@@ -164,10 +174,14 @@ def get_tool_registry(
     support_service: Annotated[SupportService, Depends(get_support_service)],
 ) -> ToolRegistry:
     erp = get_erp_client()
+    projuris = get_projuris_client()
     return ToolRegistry([
         SearchTool(knowledge_service),
         OrderTool(erp),
         TicketTool(support_service),
+        ProjurisSearchPersonTool(projuris),
+        ProjurisPersonDataTool(projuris),
+        ProjurisPersonCasesTool(projuris),
     ])
 
 
@@ -181,16 +195,21 @@ def get_orchestrator(
 ) -> Orchestrator:
     llm = get_llm_client()
     session_mem = SessionMemory(cache, settings.session_ttl_seconds)
+    projuris = get_projuris_client()
     registry = ToolRegistry([
         SearchTool(knowledge_service),
         OrderTool(get_erp_client()),
         TicketTool(support_service),
+        ProjurisSearchPersonTool(projuris),
+        ProjurisPersonDataTool(projuris),
+        ProjurisPersonCasesTool(projuris),
     ])
     agents = [
         FAQAgent(llm, registry),
         OrderAgent(llm, registry, UserMemory(cache)),
         SupportAgent(llm, registry),
         WorkflowAgent(llm, session_mem),
+        ProjurisAgent(llm, registry, UserMemory(cache)),
     ]
     router = IntentRouter(agents)
     context_builder = get_context_builder(db, cache)

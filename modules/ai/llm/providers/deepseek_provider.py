@@ -50,6 +50,7 @@ Intenções disponíveis:
 - order_status: consulta de andamento de processo, prazos, audiências
 - support: reclamações, problemas, solicitação de atendimento humano
 - workflow: processo multi-etapa como agendamento de consulta, envio de documentos
+- client_data: dados cadastrais do cliente e lista de processos vinculados a ele
 
 Responda SEMPRE usando a função classify_intent."""
 

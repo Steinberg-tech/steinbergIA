@@ -6,6 +6,7 @@ class Intent(StrEnum):
     ORDER_STATUS = "order_status"
     SUPPORT = "support"
     WORKFLOW = "workflow"
+    CLIENT_DATA = "client_data"
 
 
 class AgentName(StrEnum):
@@ -13,6 +14,7 @@ class AgentName(StrEnum):
     ORDER = "order_agent"
     SUPPORT = "support_agent"
     WORKFLOW = "workflow_agent"
+    PROJURIS = "projuris_agent"
 
 
 class MessageRole(StrEnum):
