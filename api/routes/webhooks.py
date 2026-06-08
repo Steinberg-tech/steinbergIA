@@ -2,7 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 
-from api.dependencies import get_conversation_service, get_orchestrator, get_session_memory, get_user_memory
+from api.dependencies import get_conversation_service, get_orchestrator, get_projuris_identity_service, get_session_memory, get_user_memory
+from modules.integrations.projuris.identity import ProjurisIdentityService
 from memory.session import SessionMemory
 from memory.user_memory import UserMemory
 from modules.conversations.service import ConversationService
@@ -32,6 +33,7 @@ async def receive_digisac(
     conv_service: Annotated[ConversationService, Depends(get_conversation_service)],
     session_memory: Annotated[SessionMemory, Depends(get_session_memory)],
     user_memory: Annotated[UserMemory, Depends(get_user_memory)],
+    identity_service: Annotated[ProjurisIdentityService, Depends(get_projuris_identity_service)],
 ):
     """
     Dedicated Digisac webhook. Handles text, audio, image, and document messages.
@@ -76,6 +78,14 @@ async def receive_digisac(
         if phone not in allowed:
             _log.info("digisac_sender_ignored", phone=phone)
             return {"status": "ignored", "reason": "sender not in allowlist"}
+
+    # Identidade Projuris (cacheada): resolve quem é o contato pelo telefone.
+    if not phone and contact_id:
+        phone = await get_digisac_client().get_contact_phone(contact_id)
+    try:
+        await identity_service.ensure_identity(session_id, phone)
+    except Exception as exc:  # nunca bloqueia a mensagem
+        _log.error("identity_resolution_error", session_id=session_id, error=str(exc))
 
     # Resolve media to text when needed
     if message_type in _AUDIO_TYPES:
