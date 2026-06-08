@@ -317,10 +317,12 @@ async def test_process_agent_returns_friendly_message_on_error(mock_context):
     registry = ToolRegistry([ProcessTool(projuris_mock)])
     agent = ProcessAgent(llm, registry, user_mem)
 
-    response = await agent.handle("Processo 9999999-00.2020.0.00.0000", mock_context)
+    ctx = {**mock_context, "user": {"projuris_codigo_pessoa": 42015519}}
+    response = await agent.handle("Processo 9999999-00.2020.0.00.0000", ctx)
 
     assert isinstance(response, AgentResponse)
     assert response.message
+    assert "Não encontrei o processo" in response.message
     user_mem.remember_last_process.assert_not_called()
 
 
