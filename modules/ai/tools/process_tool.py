@@ -46,12 +46,12 @@ class ProcessTool(BaseTool):
                     f"Falha ao consultar processo {numero_processo}: {exc}"
                 ) from exc
 
-        processo["envolvidos"] = [
-            {
-                "codigo_pessoa": e.get("codigoPessoaEnvolvido"),
-                "nome": e.get("nomePessoaEnvolvido"),
-                "participacao": e.get("participacaoTipo"),
-            }
-            for e in envolvidos_raw
-        ]
-        return processo
+            processo["envolvidos"] = [
+                {
+                    "codigo_pessoa": e.get("codigoPessoaEnvolvido"),
+                    "nome": e.get("nomePessoaEnvolvido"),
+                    "participacao": e.get("participacaoTipo"),
+                }
+                for e in envolvidos_raw
+            ]
+            return processo

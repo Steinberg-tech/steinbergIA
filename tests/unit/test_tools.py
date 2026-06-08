@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from modules.ai.tools.search_tool import SearchTool
 from modules.ai.tools.order_tool import OrderTool
@@ -79,6 +79,7 @@ async def test_process_tool_calls_projuris_client():
     projuris_mock.get_processo_by_numero.assert_called_once_with("0001234-12.2023.8.26.0000")
     assert result["numeroProcesso"] == "0001234-12.2023.8.26.0000"
     assert result["envolvidos"][0]["codigo_pessoa"] == 40407021
+    projuris_mock.get_processo_envolvidos.assert_called_once_with(25569655)
 
 
 @pytest.mark.asyncio
@@ -92,3 +93,17 @@ async def test_process_tool_raises_tool_execution_error_on_integration_error():
 
     with pytest.raises(ToolExecutionError):
         await tool.execute(numero_processo="0000000-00.0000.0.00.0000")
+
+
+@pytest.mark.asyncio
+async def test_process_tool_sem_codigo_processo_nao_busca_envolvidos():
+    from modules.ai.tools.process_tool import ProcessTool
+
+    projuris_mock = AsyncMock()
+    projuris_mock.get_processo_by_numero.return_value = {"numeroProcesso": "X"}  # sem codigoProcesso
+    tool = ProcessTool(projuris_mock)
+
+    result = await tool.execute(numero_processo="X")
+
+    assert result["envolvidos"] == []
+    projuris_mock.get_processo_envolvidos.assert_not_called()
