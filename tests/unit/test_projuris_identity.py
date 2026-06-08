@@ -64,3 +64,12 @@ async def test_erro_transitorio_nao_cacheia():
     client.get_pessoa_by_telefone.side_effect = IntegrationError("down")
     result = await svc.ensure_identity("s1", "558597085202")
     assert "projuris_checked_at" not in result
+    assert "projuris_codigo_pessoa" not in result
+
+
+@pytest.mark.asyncio
+async def test_sem_telefone_nao_consulta():
+    svc, client, mem = _service()
+    result = await svc.ensure_identity("s1", "")
+    assert result == {}
+    client.get_pessoa_by_telefone.assert_not_awaited()
