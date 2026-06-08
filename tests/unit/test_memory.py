@@ -33,3 +33,6 @@ async def test_remember_projuris_identity_persiste_campos():
     assert data["projuris_codigo_pessoa"] == 42015519
     assert data["projuris_nome"] == "Israel"
     assert data["projuris_checked_at"] == 1000.0
+    assert data["projuris_email"] == "israel@x.com"
+    assert data["projuris_habilitado"] is True
+    assert data["projuris_telefone"] == "85997085202"

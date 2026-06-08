@@ -42,11 +42,11 @@ class UserMemory:
         self,
         session_id: str,
         *,
-        codigo_pessoa,
-        nome,
-        email,
-        habilitado,
-        telefone,
+        codigo_pessoa: int | None,
+        nome: str | None,
+        email: str | None,
+        habilitado: bool | None,
+        telefone: str | None,
         checked_at: float,
     ) -> None:
         await self.update(
