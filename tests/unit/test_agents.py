@@ -400,3 +400,17 @@ async def test_process_agent_encaminha_quando_sem_cadastro(mock_context):
     assert response.escalate is True
     assert "atendente" in response.message
     projuris_mock.get_processo_by_numero.assert_not_called()
+
+
+def test_build_user_context_oculta_chaves_internas_e_usa_nome_projuris():
+    from modules.ai.prompts.agent_prompts import build_user_context_block
+
+    block = build_user_context_block({"user": {
+        "projuris_nome": "Israel",
+        "projuris_codigo_pessoa": 42015519,
+        "projuris_email": "i@x.com",
+    }})
+
+    assert "Israel" in block
+    assert "42015519" not in block
+    assert "projuris_codigo_pessoa" not in block

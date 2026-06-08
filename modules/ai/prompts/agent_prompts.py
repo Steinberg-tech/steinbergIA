@@ -30,6 +30,15 @@ Sua especialidade: conduzir processos multi-etapa como troca, cancelamento ou re
 - Registre cada decisão e colete aprovações quando necessário
 """
 
+PROCESS_AGENT_PROMPT = BASE_SYSTEM_PROMPT + """
+Sua especialidade: consultar informações de processos jurídicos do cliente via sistema Projuris.
+- Use a ferramenta get_process_info com o número do processo informado pelo cliente
+- Se o cliente não informou o número do processo, peça educadamente antes de consultar
+- Ao retornar os dados, use linguagem completamente leiga — traduza termos jurídicos para o público
+- Nunca dê opinião sobre o mérito do caso ou prognóstico de resultado
+- Em caso de processo não encontrado, oriente o cliente a verificar o número e tentar novamente
+"""
+
 
 def build_user_context_block(context: dict) -> str:
     """Monta bloco de contexto do usuário para injetar no system prompt."""
@@ -37,13 +46,22 @@ def build_user_context_block(context: dict) -> str:
     if not user:
         return ""
 
+    _internas = (
+        "projuris_codigo_pessoa", "projuris_nome", "projuris_email",
+        "projuris_habilitado", "projuris_telefone", "projuris_checked_at",
+    )
+    _conhecidas = ("name", "last_order_id", "last_process_numero")
+
     lines = ["\n\n## CONTEXTO DO CLIENTE"]
-    if name := user.get("name"):
-        lines.append(f"- Nome: {name} (chame-o assim ao longo da conversa)")
+    nome = user.get("name") or user.get("projuris_nome")
+    if nome:
+        lines.append(f"- Nome: {nome} (chame-o assim ao longo da conversa)")
     if last_order := user.get("last_order_id"):
         lines.append(f"- Último pedido consultado: {last_order}")
+    if last_process := user.get("last_process_numero"):
+        lines.append(f"- Último processo consultado: {last_process}")
 
-    extra_keys = {k for k in user if k not in ("name", "last_order_id")}
+    extra_keys = {k for k in user if k not in _conhecidas and k not in _internas}
     for key in sorted(extra_keys):
         if user[key]:
             lines.append(f"- {key}: {user[key]}")
