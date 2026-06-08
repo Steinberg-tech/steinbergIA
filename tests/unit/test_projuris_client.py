@@ -75,3 +75,29 @@ async def test_get_pessoa_by_telefone_erro_http_levanta_integration_error(monkey
     _patch_transport(monkeypatch, handler)
     with pytest.raises(IntegrationError):
         await _client().get_pessoa_by_telefone("85997085202")
+
+
+@pytest.mark.asyncio
+async def test_get_processo_envolvidos(monkeypatch):
+    async def handler(request):
+        assert request.url.path.endswith("/adv-service/processo/25569655")
+        return httpx.Response(200, json={
+            "codigoProcesso": 25569655,
+            "processoEnvolvidoSimplificadoWs": [
+                {"codigoPessoaEnvolvido": 40407021, "nomePessoaEnvolvido": "CLAUDINA", "participacaoTipo": "Autor"},
+                {"codigoPessoaEnvolvido": 40407022, "nomePessoaEnvolvido": "BANCO PAN", "participacaoTipo": "Réu"},
+            ],
+        })
+
+    _patch_transport(monkeypatch, handler)
+    envolvidos = await _client().get_processo_envolvidos(25569655)
+    assert {e["codigoPessoaEnvolvido"] for e in envolvidos} == {40407021, 40407022}
+
+
+@pytest.mark.asyncio
+async def test_get_processo_envolvidos_vazio(monkeypatch):
+    async def handler(request):
+        return httpx.Response(200, json={"codigoProcesso": 1})
+
+    _patch_transport(monkeypatch, handler)
+    assert await _client().get_processo_envolvidos(1) == []

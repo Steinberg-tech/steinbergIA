@@ -11,6 +11,7 @@ _log = get_logger("projuris_client")
 _AUTH_PATH = "/auth/token"
 _PROCESS_CONSULTA_PATH = "/adv-service/processo/consulta"
 _PESSOA_CONSULTA_PATH = "/adv-service/pessoa/consulta"
+_PROCESSO_DETALHE_PATH = "/adv-service/processo"
 
 
 class ProjurisClient(BaseClient):
@@ -170,3 +171,28 @@ class ProjurisClient(BaseClient):
                     return pessoas[0]
 
         return None
+
+    async def get_processo_envolvidos(self, codigo_processo: int) -> list[dict]:
+        """Retorna a lista de envolvidos (partes) do processo, via detalhe.
+
+        Cada item contém ao menos: codigoPessoaEnvolvido, nomePessoaEnvolvido,
+        participacaoTipo. Lista vazia se o campo não vier.
+        """
+        token = await self._get_valid_token()
+        url = f"{self._service_url}{_PROCESSO_DETALHE_PATH}/{codigo_processo}"
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            try:
+                response = await client.get(
+                    url, headers={"Authorization": f"Bearer {token}"}
+                )
+                response.raise_for_status()
+                body = response.json()
+            except httpx.HTTPStatusError as exc:
+                _log.error("http_error", url=url, status=exc.response.status_code)
+                raise IntegrationError(f"HTTP {exc.response.status_code} from {url}") from exc
+            except httpx.RequestError as exc:
+                _log.error("request_error", url=url, error=str(exc))
+                raise IntegrationError(f"Request failed: {exc}") from exc
+
+        return body.get("processoEnvolvidoSimplificadoWs") or []
