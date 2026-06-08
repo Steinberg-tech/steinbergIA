@@ -53,3 +53,42 @@ def test_registry_returns_tool_schemas():
     schemas = registry.get_tool_schemas()
     assert len(schemas) == 1
     assert schemas[0]["function"]["name"] == "search_knowledge"
+
+
+@pytest.mark.asyncio
+async def test_process_tool_calls_projuris_client():
+    from modules.ai.tools.process_tool import ProcessTool
+
+    projuris_mock = AsyncMock()
+    projuris_mock.get_processo_by_numero.return_value = {
+        "codigoProcesso": 25569655,
+        "numeroProcesso": "0001234-12.2023.8.26.0000",
+        "classeProcessual": "Procedimento Comum Cível",
+        "orgaoJulgador": "1ª Vara Cível de São Paulo",
+        "magistrado": "João da Silva",
+        "partes": [{"nome": "Banco XPTO"}, {"nome": "José da Silva"}],
+    }
+    projuris_mock.get_processo_envolvidos.return_value = [
+        {"codigoPessoaEnvolvido": 40407021, "nomePessoaEnvolvido": "JOSÉ", "participacaoTipo": "Autor"},
+    ]
+    tool = ProcessTool(projuris_mock)
+
+    assert tool.name == "get_process_info"
+    result = await tool.execute(numero_processo="0001234-12.2023.8.26.0000")
+
+    projuris_mock.get_processo_by_numero.assert_called_once_with("0001234-12.2023.8.26.0000")
+    assert result["numeroProcesso"] == "0001234-12.2023.8.26.0000"
+    assert result["envolvidos"][0]["codigo_pessoa"] == 40407021
+
+
+@pytest.mark.asyncio
+async def test_process_tool_raises_tool_execution_error_on_integration_error():
+    from modules.ai.tools.process_tool import ProcessTool
+    from shared.exceptions import IntegrationError, ToolExecutionError
+
+    projuris_mock = AsyncMock()
+    projuris_mock.get_processo_by_numero.side_effect = IntegrationError("HTTP 404 from /processos/xxx")
+    tool = ProcessTool(projuris_mock)
+
+    with pytest.raises(ToolExecutionError):
+        await tool.execute(numero_processo="0000000-00.0000.0.00.0000")
