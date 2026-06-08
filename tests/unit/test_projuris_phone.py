@@ -25,3 +25,12 @@ def test_digisac_13_digitos_com_9():
 
 def test_vazio():
     assert phone_candidates("") == []
+
+
+def test_none_retorna_vazio():
+    assert phone_candidates(None) == []
+
+
+def test_entrada_malformada_passa_direto():
+    # entradas que não batem com 10/11 dígitos são repassadas como estão
+    assert phone_candidates("12345") == ["12345"]

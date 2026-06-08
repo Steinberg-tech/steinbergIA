@@ -9,7 +9,7 @@ def phone_candidates(raw: str) -> list[str]:
     formatos plausíveis em ordem de probabilidade, sem duplicatas.
     """
     digits = re.sub(r"\D", "", raw or "")
-    if digits.startswith("55") and len(digits) >= 12:
+    if digits.startswith("55") and len(digits) in (12, 13):
         digits = digits[2:]
 
     candidates: list[str] = []
@@ -26,6 +26,8 @@ def phone_candidates(raw: str) -> list[str]:
         if digits[2] == "9":                   # também tenta sem o 9
             add(digits[:2] + digits[3:])
     else:
+        # Inputs que não batem com 10/11 dígitos são repassados como estão.
+        # Candidatos inválidos não geram match no Projuris downstream.
         add(digits)
 
     return candidates
