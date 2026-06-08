@@ -1,7 +1,10 @@
+import json
+
 import httpx
 import pytest
 
 from modules.integrations.projuris.projuris_client import ProjurisClient
+from shared.exceptions import IntegrationError
 
 
 class _FakeCache:
@@ -18,7 +21,7 @@ class _FakeCache:
         self._store.pop(key, None)
 
 
-def _client(transport):
+def _client():
     cache = _FakeCache()
     client = ProjurisClient(
         cache=cache,
@@ -26,36 +29,33 @@ def _client(transport):
         service_url="https://svc.test",
         username="u", password="p", client_id="c", client_secret="s",
     )
-    # injeta um token válido para pular a autenticação
     cache._store[ProjurisClient._ACCESS_KEY] = "tok"
-    return client, transport
+    return client
+
+
+def _patch_transport(monkeypatch, handler):
+    _Real = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: _Real(transport=transport))
 
 
 @pytest.mark.asyncio
 async def test_get_pessoa_by_telefone_retorna_primeiro_match(monkeypatch):
-    calls = []
+    bodies = []
 
     async def handler(request):
-        calls.append(dict(request.url.params))
-        body = request.read().decode()
-        assert '"telefone"' in body
+        bodies.append(json.loads(request.read().decode()))
+        assert dict(request.url.params)["pagina"] == "0"
         return httpx.Response(200, json={
             "totalRegistros": 1,
             "pessoaConsulta": [{"codigoPessoa": 42015519, "nome": "Israel"}],
         })
 
-    transport = httpx.MockTransport(handler)
-    _Real = httpx.AsyncClient
-    monkeypatch.setattr(
-        httpx, "AsyncClient",
-        lambda *a, **k: _Real(transport=transport),
-    )
-
-    client, _ = _client(transport)
-    pessoa = await client.get_pessoa_by_telefone("(85)9 9708-5202")
+    _patch_transport(monkeypatch, handler)
+    pessoa = await _client().get_pessoa_by_telefone("(85)9 9708-5202")
 
     assert pessoa["codigoPessoa"] == 42015519
-    assert calls[0]["pagina"] == "0"
+    assert bodies[0]["telefone"] == "85997085202"
 
 
 @pytest.mark.asyncio
@@ -63,12 +63,15 @@ async def test_get_pessoa_by_telefone_sem_match_retorna_none(monkeypatch):
     async def handler(request):
         return httpx.Response(200, json={"totalRegistros": 0, "pessoaConsulta": []})
 
-    transport = httpx.MockTransport(handler)
-    _Real = httpx.AsyncClient
-    monkeypatch.setattr(
-        httpx, "AsyncClient",
-        lambda *a, **k: _Real(transport=transport),
-    )
+    _patch_transport(monkeypatch, handler)
+    assert await _client().get_pessoa_by_telefone("85997085202") is None
 
-    client, _ = _client(transport)
-    assert await client.get_pessoa_by_telefone("85997085202") is None
+
+@pytest.mark.asyncio
+async def test_get_pessoa_by_telefone_erro_http_levanta_integration_error(monkeypatch):
+    async def handler(request):
+        return httpx.Response(500)
+
+    _patch_transport(monkeypatch, handler)
+    with pytest.raises(IntegrationError):
+        await _client().get_pessoa_by_telefone("85997085202")

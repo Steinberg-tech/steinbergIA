@@ -141,8 +141,8 @@ class ProjurisClient(BaseClient):
         token = await self._get_valid_token()
         url = f"{self._service_url}{_PESSOA_CONSULTA_PATH}"
 
-        for candidate in phone_candidates(telefone):
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            for candidate in phone_candidates(telefone):
                 try:
                     response = await client.post(
                         url,
@@ -159,14 +159,14 @@ class ProjurisClient(BaseClient):
                     _log.error("request_error", url=url, error=str(exc))
                     raise IntegrationError(f"Request failed: {exc}") from exc
 
-            pessoas = body.get("pessoaConsulta") or []
-            if pessoas:
-                if len(pessoas) > 1:
-                    _log.warning(
-                        "projuris_pessoa_ambigua",
-                        telefone=candidate,
-                        total=body.get("totalRegistros"),
-                    )
-                return pessoas[0]
+                pessoas = body.get("pessoaConsulta") or []
+                if pessoas:
+                    if len(pessoas) > 1:
+                        _log.warning(
+                            "projuris_pessoa_ambigua",
+                            telefone=candidate,
+                            total=body.get("totalRegistros"),
+                        )
+                    return pessoas[0]
 
         return None
