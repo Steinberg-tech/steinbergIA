@@ -46,10 +46,6 @@ def build_user_context_block(context: dict) -> str:
     if not user:
         return ""
 
-    _internas = (
-        "projuris_codigo_pessoa", "projuris_nome", "projuris_email",
-        "projuris_habilitado", "projuris_telefone", "projuris_checked_at",
-    )
     _conhecidas = ("name", "last_order_id", "last_process_numero")
 
     lines = ["\n\n## CONTEXTO DO CLIENTE"]
@@ -61,7 +57,10 @@ def build_user_context_block(context: dict) -> str:
     if last_process := user.get("last_process_numero"):
         lines.append(f"- Último processo consultado: {last_process}")
 
-    extra_keys = {k for k in user if k not in _conhecidas and k not in _internas}
+    extra_keys = {
+        k for k in user
+        if k not in _conhecidas and not k.startswith("projuris_")
+    }
     for key in sorted(extra_keys):
         if user[key]:
             lines.append(f"- {key}: {user[key]}")

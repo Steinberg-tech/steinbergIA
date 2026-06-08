@@ -414,3 +414,4 @@ def test_build_user_context_oculta_chaves_internas_e_usa_nome_projuris():
     assert "Israel" in block
     assert "42015519" not in block
     assert "projuris_codigo_pessoa" not in block
+    assert "i@x.com" not in block
