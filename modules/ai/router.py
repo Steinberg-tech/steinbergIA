@@ -10,6 +10,7 @@ _INTENT_TO_AGENT: dict[str, str] = {
     Intent.ORDER_STATUS: AgentName.ORDER,
     Intent.SUPPORT: AgentName.SUPPORT,
     Intent.WORKFLOW: AgentName.WORKFLOW,
+    Intent.PROCESS_STATUS: AgentName.PROCESS,
 }
 
 # Maps intents to the message template the agent should use as basis for the response.
@@ -19,6 +20,7 @@ _INTENT_TO_TEMPLATE: dict[str, str | None] = {
     Intent.ORDER_STATUS: TemplateMessage.CONTATO_INFORMACAO_PROCESSO,
     Intent.SUPPORT: TemplateMessage.CONTATO_URGENTE_OK,
     Intent.WORKFLOW: TemplateMessage.SOLICITACAO_DOCUMENTOS,
+    Intent.PROCESS_STATUS: TemplateMessage.CONTATO_INFORMACAO_PROCESSO,
 }
 
 
