@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     crm_api_key: str = ""
     crm_timeout_seconds: int = 10
 
+    # Projuris
+    projuris_base_url: str = ""       # gateway de auth: https://apigw.projurisadv.com.br
+    projuris_service_url: str = ""    # serviço de dados: https://service.projurisadv.com.br
+    projuris_username: str = ""
+    projuris_password: str = ""
+    projuris_client_id: str = ""
+    projuris_client_secret: str = ""
+    projuris_timeout_seconds: int = 15
+
     # Digisac
     digisac_base_url: str = "https://steinbergadvogados.digisac.io/api/v1"
     digisac_token: str = ""
