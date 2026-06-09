@@ -205,3 +205,213 @@ async def test_order_agent_does_not_save_when_order_id_absent(mock_llm, mock_reg
     await agent.handle("Pedido X", context)
 
     user_mem.remember_last_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_agent_with_tool_call(mock_context):
+    from unittest.mock import AsyncMock
+    from memory.user_memory import UserMemory
+    from modules.ai.agents.process_agent import ProcessAgent
+    from modules.ai.llm.schemas import LLMResponse
+    from modules.ai.tools.process_tool import ProcessTool
+    from modules.ai.tools.registry import ToolRegistry
+    from modules.ai.llm.client import LLMClient
+    from shared.constants import AgentName
+
+    llm = AsyncMock(spec=LLMClient)
+    llm.generate_response.side_effect = [
+        LLMResponse(
+            content="",
+            model="gpt-4o-mock",
+            tool_calls=[{
+                "name": "get_process_info",
+                "arguments": {"numero_processo": "0001234-12.2023.8.26.0000"},
+            }],
+        ),
+        LLMResponse(
+            content="Seu processo está na 1ª Vara Cível, sob responsabilidade do juiz João da Silva.",
+            model="gpt-4o-mock",
+        ),
+    ]
+
+    projuris_mock = AsyncMock()
+    projuris_mock.get_processo_by_numero.return_value = {
+        "numeroProcesso": "0001234-12.2023.8.26.0000",
+        "codigoProcesso": 25569655,
+        "classeProcessual": "Procedimento Comum Cível",
+        "orgaoJulgador": "1ª Vara Cível",
+        "magistrado": "João da Silva",
+        "partes": [{"nome": "Banco XPTO"}, {"nome": "José da Silva"}],
+    }
+    projuris_mock.get_processo_envolvidos.return_value = [
+        {"codigoPessoaEnvolvido": 42015519, "nomePessoaEnvolvido": "JOSÉ", "participacaoTipo": "Autor"},
+    ]
+
+    user_mem = AsyncMock(spec=UserMemory)
+    registry = ToolRegistry([ProcessTool(projuris_mock)])
+    agent = ProcessAgent(llm, registry, user_mem)
+
+    assert agent.name == AgentName.PROCESS
+    ctx = {**mock_context, "user": {"name": "José", "projuris_codigo_pessoa": 42015519}}
+    response = await agent.handle("Como está meu processo 0001234-12.2023.8.26.0000?", ctx)
+
+    assert isinstance(response, AgentResponse)
+    assert response.message
+    user_mem.remember_last_process.assert_called_once_with(
+        "test-session-001", "0001234-12.2023.8.26.0000"
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_agent_asks_for_number_when_absent(mock_context):
+    from unittest.mock import AsyncMock
+    from memory.user_memory import UserMemory
+    from modules.ai.agents.process_agent import ProcessAgent
+    from modules.ai.llm.schemas import LLMResponse
+    from modules.ai.tools.registry import ToolRegistry
+    from modules.ai.llm.client import LLMClient
+
+    llm = AsyncMock(spec=LLMClient)
+    llm.generate_response.return_value = LLMResponse(
+        content="Para consultar o senhor(a), preciso do número do processo. Poderia informá-lo?",
+        model="gpt-4o-mock",
+        tool_calls=None,
+    )
+
+    user_mem = AsyncMock(spec=UserMemory)
+    registry = ToolRegistry([])
+    agent = ProcessAgent(llm, registry, user_mem)
+
+    response = await agent.handle("Como está meu processo?", mock_context)
+
+    assert isinstance(response, AgentResponse)
+    assert response.message
+    user_mem.remember_last_process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_agent_returns_friendly_message_on_error(mock_context):
+    from unittest.mock import AsyncMock
+    from memory.user_memory import UserMemory
+    from modules.ai.agents.process_agent import ProcessAgent
+    from modules.ai.llm.schemas import LLMResponse
+    from modules.ai.tools.process_tool import ProcessTool
+    from modules.ai.tools.registry import ToolRegistry
+    from modules.ai.llm.client import LLMClient
+    from shared.exceptions import IntegrationError
+
+    llm = AsyncMock(spec=LLMClient)
+    llm.generate_response.return_value = LLMResponse(
+        content="",
+        model="gpt-4o-mock",
+        tool_calls=[{
+            "name": "get_process_info",
+            "arguments": {"numero_processo": "9999999-00.2020.0.00.0000"},
+        }],
+    )
+
+    projuris_mock = AsyncMock()
+    projuris_mock.get_processo_by_numero.side_effect = IntegrationError("HTTP 404 from /processos/9999999")
+
+    user_mem = AsyncMock(spec=UserMemory)
+    registry = ToolRegistry([ProcessTool(projuris_mock)])
+    agent = ProcessAgent(llm, registry, user_mem)
+
+    ctx = {**mock_context, "user": {"projuris_codigo_pessoa": 42015519}}
+    response = await agent.handle("Processo 9999999-00.2020.0.00.0000", ctx)
+
+    assert isinstance(response, AgentResponse)
+    assert response.message
+    assert "Não encontrei o processo" in response.message
+    user_mem.remember_last_process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_user_memory_remember_last_process():
+    import json
+    from unittest.mock import AsyncMock
+    from memory.user_memory import UserMemory
+    from shared.interfaces import CacheBackend
+
+    cache = AsyncMock(spec=CacheBackend)
+    cache.get.return_value = None
+    mem = UserMemory(cache)
+
+    await mem.remember_last_process("session-xyz", "0001234-12.2023.8.26.0000")
+
+    cache.set.assert_called_once()
+    stored = json.loads(cache.set.call_args[0][1])
+    assert stored["last_process_numero"] == "0001234-12.2023.8.26.0000"
+
+
+@pytest.mark.asyncio
+async def test_process_agent_nega_quando_nao_e_parte(mock_context):
+    from unittest.mock import AsyncMock
+    from memory.user_memory import UserMemory
+    from modules.ai.agents.process_agent import ProcessAgent
+    from modules.ai.llm.schemas import LLMResponse
+    from modules.ai.tools.process_tool import ProcessTool
+    from modules.ai.tools.registry import ToolRegistry
+    from modules.ai.llm.client import LLMClient
+
+    llm = AsyncMock(spec=LLMClient)
+    llm.generate_response.return_value = LLMResponse(
+        content="",
+        model="gpt-4o-mock",
+        tool_calls=[{"name": "get_process_info", "arguments": {"numero_processo": "0001234-12.2023.8.26.0000"}}],
+    )
+    projuris_mock = AsyncMock()
+    projuris_mock.get_processo_by_numero.return_value = {"numeroProcesso": "X", "codigoProcesso": 1}
+    projuris_mock.get_processo_envolvidos.return_value = [
+        {"codigoPessoaEnvolvido": 99999, "nomePessoaEnvolvido": "OUTRO", "participacaoTipo": "Autor"},
+    ]
+    user_mem = AsyncMock(spec=UserMemory)
+    agent = ProcessAgent(llm, ToolRegistry([ProcessTool(projuris_mock)]), user_mem)
+
+    ctx = {**mock_context, "user": {"projuris_codigo_pessoa": 42015519}}
+    response = await agent.handle("Quero ver o processo 0001234-12.2023.8.26.0000", ctx)
+
+    assert "você é uma das partes" in response.message
+    user_mem.remember_last_process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_agent_encaminha_quando_sem_cadastro(mock_context):
+    from unittest.mock import AsyncMock
+    from memory.user_memory import UserMemory
+    from modules.ai.agents.process_agent import ProcessAgent
+    from modules.ai.llm.schemas import LLMResponse
+    from modules.ai.tools.process_tool import ProcessTool
+    from modules.ai.tools.registry import ToolRegistry
+    from modules.ai.llm.client import LLMClient
+
+    llm = AsyncMock(spec=LLMClient)
+    llm.generate_response.return_value = LLMResponse(
+        content="",
+        model="gpt-4o-mock",
+        tool_calls=[{"name": "get_process_info", "arguments": {"numero_processo": "X"}}],
+    )
+    projuris_mock = AsyncMock()
+    agent = ProcessAgent(llm, ToolRegistry([ProcessTool(projuris_mock)]), AsyncMock(spec=UserMemory))
+
+    ctx = {**mock_context, "user": {}}  # sem projuris_codigo_pessoa
+    response = await agent.handle("meu processo 0001234-12.2023.8.26.0000", ctx)
+
+    assert response.escalate is True
+    assert "atendente" in response.message
+    projuris_mock.get_processo_by_numero.assert_not_called()
+
+
+def test_build_user_context_oculta_chaves_internas_e_usa_nome_projuris():
+    from modules.ai.prompts.agent_prompts import build_user_context_block
+
+    block = build_user_context_block({"user": {
+        "projuris_nome": "Israel",
+        "projuris_codigo_pessoa": 42015519,
+        "projuris_email": "i@x.com",
+    }})
+
+    assert "Israel" in block
+    assert "42015519" not in block
+    assert "projuris_codigo_pessoa" not in block
+    assert "i@x.com" not in block

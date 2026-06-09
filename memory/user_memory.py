@@ -35,5 +35,29 @@ class UserMemory:
     async def remember_last_order(self, session_id: str, order_id: str) -> None:
         await self.update(session_id, last_order_id=order_id)
 
+    async def remember_last_process(self, session_id: str, numero_processo: str) -> None:
+        await self.update(session_id, last_process_numero=numero_processo)
+
+    async def remember_projuris_identity(
+        self,
+        session_id: str,
+        *,
+        codigo_pessoa: int | None,
+        nome: str | None,
+        email: str | None,
+        habilitado: bool | None,
+        telefone: str | None,
+        checked_at: float,
+    ) -> None:
+        await self.update(
+            session_id,
+            projuris_codigo_pessoa=codigo_pessoa,
+            projuris_nome=nome,
+            projuris_email=email,
+            projuris_habilitado=habilitado,
+            projuris_telefone=telefone,
+            projuris_checked_at=checked_at,
+        )
+
     async def clear(self, session_id: str) -> None:
         await self._cache.delete(self._key(session_id))
